@@ -64,6 +64,9 @@ export class Spaces {
     this.reconnecting = JSON.parse(localStorage.getItem("machines.reconnecting") ?? "{}");
     for (const state of Object.values(this.reconnecting)) state.busy = false;
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
+    this.fold = new Set(JSON.parse(localStorage.getItem("repos.folded") ?? "[]"));
+    this.kids = {};
+    this.hot = null;
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // Refresh only when the refs could have changed (see `due`).
@@ -280,6 +283,7 @@ export class Spaces {
     const mains = new Set(list.filter((r) => r.g && !r.g.linked).map((r) => r.g.repo));
     const nested = (r) => r.g?.linked && mains.has(r.g.repo);
     const out = [];
+    this.kids = {};
     const placed = new Set(); // repos whose worktrees are listed (under the first of its spaces)
     for (const r of list) {
       if (nested(r)) continue;
@@ -287,6 +291,7 @@ export class Spaces {
       if (!r.g || r.g.linked || placed.has(r.g.repo)) continue;
       placed.add(r.g.repo);
       const kids = list.filter((k) => nested(k) && k.g.repo === r.g.repo);
+      this.kids[r.g.repo] = { host: r.w.id, n: kids.length };
       kids.forEach((k, n) => out.push({ ...k, tree: n === kids.length - 1 ? "└─" : "├─" }));
     }
     // Simulate the batch so later indexes include earlier moves. An attempted
@@ -313,7 +318,7 @@ export class Spaces {
 
   // The rows, under a header per machine once one isn't this computer.
   grouped(t, collapsed) {
-    const rows = this.ordered();
+    const rows = this.ordered().filter((r) => !(r.tree && r.g && this.fold.has(r.g.repo) && !r.w.active));
     const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name), ...Object.keys(this.reconnecting)])].sort();
     const loading = m => {
@@ -418,6 +423,9 @@ export class Spaces {
 
   row({ w, i, g, tree }, t) {
     const on = w.active;
+    const kidInfo = g ? this.kids[g.repo] : null;
+    const canFold = !tree && Boolean(kidInfo) && kidInfo.host === w.id && kidInfo.n > 0;
+    const isFolded = canFold && this.fold.has(g.repo);
     const fromIndex = this.pressed === null ? -1 : spaces().findIndex(s => s.id === this.pressed);
     return v_flex()
       .relative()
@@ -459,6 +467,11 @@ export class Spaces {
         cx.notify();
       })
       .on_mouse_down("right", () => this.menu(w))
+      .on_hover((over, cx) => {
+        if (over) this.hot = w.id;
+        else if (this.hot === w.id) this.hot = null;
+        cx.notify();
+      })
       .child(
         h_flex()
           .gap(9)
@@ -466,7 +479,32 @@ export class Spaces {
           .when(Boolean(tree), el => el.pl(14).child(this.prDot(g, t)).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(14).flex_none().rounded(4).border(1.5).border_color(on ? t.foreground : t.muted).when(on, (s) => s.bg(t.foreground))))
           .child(div().id(`name-${w.id}`).flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(Boolean(tree && g?.branch), (el) => el.tooltip(this.tip(g))).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1()),
+          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .when(canFold && (isFolded || this.hot === w.id), (el) =>
+            el.child(
+              h_flex()
+                .id(`fold-${w.id}`)
+                .h(22)
+                .px(5)
+                .gap(4)
+                .flex_none()
+                .items_center()
+                .rounded(6)
+                .text_size(12)
+                .text_color(t.dim)
+                .hover((s) => s.bg(t.hover).text_color(t.foreground))
+                .tooltip(isFolded ? `Show ${kidInfo.n} worktrees` : "Hide worktrees")
+                .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+                .on_click((_e, cx) => {
+                  cx.stop_propagation();
+                  isFolded ? this.fold.delete(g.repo) : this.fold.add(g.repo);
+                  localStorage.setItem("repos.folded", JSON.stringify([...this.fold]));
+                  cx.notify();
+                })
+                .when(isFolded, (b) => b.child(String(kidInfo.n)))
+                .child(svg(`mods/workspace-chrome/chevron-${isFolded ? "right" : "down"}.svg`).size(12).flex_none()),
+            ),
+          ),
       );
   }
 

@@ -2,6 +2,8 @@
 
 A monochrome Herdr layout built around the terminal: a sidebar with your spaces and agents, a thin tab bar with a context line, and an optional blurred background image.
 
+![Herdrtw](preview.png)
+
 Install:
 
 ```sh
@@ -16,3 +18,13 @@ Keys (only while the layout is shown): `ctrl-alt-w` opens the new worktree dialo
 Programs the mod runs: `git`, `gh` (pull request state), `sh`, `cp`, `mkdir`, `rm`. The background dialog also uses `ffmpeg` and a file picker (`zenity` or `kdialog` on Linux, `osascript` on macOS, PowerShell on Windows). Nothing reaches the network except what `git` and `gh` do.
 
 See `RECIPE.md` for the full description. `NOTICE` lists the Apache-2.0 code derived from Herdr's own mods and the CC BY 3.0 icon.
+
+## Screenshots
+
+![Plain black](screenshots/black.png)
+
+![Abstract wallpaper](screenshots/wallpaper-abstract.png)
+
+![New worktree dialog](screenshots/new-worktree.png)
+
+![Background dialog](screenshots/background-dialog.png)
