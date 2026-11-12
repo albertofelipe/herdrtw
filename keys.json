@@ -1,0 +1,6 @@
+{
+  "layout:herdrtw": {
+    "ctrl-alt-w": "herdrtw.worktree",
+    "ctrl-alt-b": "herdrtw.bg"
+  }
+}

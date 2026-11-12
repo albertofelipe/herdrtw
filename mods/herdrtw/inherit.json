@@ -1,0 +1,11 @@
+{
+  "paths": [
+    ".env",
+    ".env.local",
+    "node_modules",
+    "vendor"
+  ],
+  "after": [],
+  "fetch": true,
+  "repos": {}
+}

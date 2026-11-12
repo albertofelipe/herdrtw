@@ -1,0 +1,3 @@
+git.svg: Git icon by Jason Long, CC BY 3.0 (https://creativecommons.org/licenses/by/3.0),
+via Wikimedia Commons (https://commons.wikimedia.org/wiki/File:Git-icon-white.svg).
+Fill changed from #fff to currentColor.

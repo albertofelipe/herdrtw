@@ -1,0 +1,14 @@
+Herdrtw
+
+mods/herdrtw/parts/tabs.js, spaces.js, agents.js and worktree.js are derived from the `tabs`,
+`spaces`, `agents` and `worktree` mods shipped with the Herdr app
+(https://github.com/herdrdev/herdr-app, defaults/mods/), licensed under the Apache License 2.0
+(mods/herdrtw/LICENSE-Herdr.txt). They were changed for this layout: transparent and translucent
+surfaces, monochrome status marks, PR state per worktree, an adaptive agents list, a worktree
+dialog with base branch, startup script and file inheritance, and a context line.
+
+mods/herdrtw/git.svg is the Git icon by Jason Long, CC BY 3.0
+(https://creativecommons.org/licenses/by/3.0), via Wikimedia Commons
+(https://commons.wikimedia.org/wiki/File:Git-icon-white.svg). The fill was changed to currentColor.
+
+mods/herdrtw/win-*.svg are the window control icons of Herdr's shipped `tabs` mod.
