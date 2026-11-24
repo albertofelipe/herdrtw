@@ -165,5 +165,18 @@
     12,
     16
   ],
-  "terminal_opacity": 0
+  "terminal_opacity": 0,
+  "floating": [
+    {
+      "id": "goto-tracker",
+      "content": {
+        "mod": "goto",
+        "props": {
+          "part": "tracker"
+        }
+      },
+      "edge": "bottom",
+      "align": "end"
+    }
+  ]
 }
