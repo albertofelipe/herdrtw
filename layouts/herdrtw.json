@@ -154,7 +154,10 @@
       "resizable": false
     }
   ],
-  "background": "canvas",
+  "background": {
+    "image": "backgrounds/herdrtw-bg-1795609468546.png",
+    "fit": "cover"
+  },
   "theme": "herdrtw",
   "terminal_padding": [
     10,
