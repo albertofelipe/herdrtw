@@ -19,7 +19,7 @@ const base = (p) => p.replace(/\\/g, "/").split("/").pop();
 
 export class Bg {
   init(_props, cx) {
-    this.cfg = { source: "", opacity: 15, blur: 8 };
+    this.cfg = { source: "", opacity: 15, blur: 8, mode: "blur", scale: 1, density: "medium", palette: "midnight", motion: false, anim: null };
     this.cfgRaw = null;
     this.busy = false;
     this.msg = "";
@@ -69,21 +69,31 @@ export class Bg {
       return cx.notify();
     }
     this.busy = true;
-    this.msg = "Rendering…";
+    this.msg = this.cfg.motion === true && this.cfg.mode !== "blur" ? "Rendering animation…" : "Rendering…";
     cx.notify();
     try {
-      const name = `herdrtw-bg-${Date.now()}.png`;
-      const out = `${BG_DIR()}/${name}`;
+      const animated = this.cfg.motion === true && this.cfg.mode !== "blur";
+      const stem = `herdrtw-bg-${Date.now()}`;
+      const out = `${BG_DIR()}/${stem}.png`;
       await exec("mkdir", ["-p", BG_DIR()]);
       const bg = String(theme().background || "#000000").replace("#", "").slice(0, 6);
-      const alpha = (Math.max(0, Math.min(100, this.cfg.opacity)) / 100).toFixed(2);
-      const blur = this.cfg.blur > 0 ? `,gblur=sigma=${this.cfg.blur}` : "";
-      const graph = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}${blur},format=rgba,colorchannelmixer=aa=${alpha}[img];[1:v][img]overlay=format=auto,format=rgb24`;
-      const r = await exec("ffmpeg", ["-y", "-loglevel", "error", "-i", this.cfg.source, "-f", "lavfi", "-i", `color=c=0x${bg}:s=${W}x${H}`, "-filter_complex", graph, "-frames:v", "1", "-update", "1", out], { timeout: 120000 });
-      if (r.code !== 0) throw new Error(r.stderr.trim().split("\n").pop() || "ffmpeg failed.");
-      await this.setLayoutBackground({ image: `backgrounds/${name}`, fit: "cover" });
-      await exec("sh", ["-c", 'for f in "$1"/herdrtw-bg-*.png; do [ "$f" != "$2" ] && rm -f "$f"; done; true', "x", BG_DIR(), out]);
+      let anim = null;
+      if (this.cfg.mode !== "blur") {
+        const r = await exec("python3", ["-I", `${appHome()}/mods/herdrtw/lib/ascii_bg.py`, this.cfg.source, out, String(W), String(H), bg, String(this.cfg.opacity), String(this.cfg.scale), this.cfg.density, this.cfg.mode, this.cfg.palette, animated ? "1" : "0"], { timeout: 300000 });
+        if (r.code !== 0) throw new Error(r.stderr.trim().split("\n").pop() || "ascii render failed.");
+        if (animated) anim = { base: stem, frames: Number(r.stdout.trim().split(" ")[0]) || 1 };
+      }
+      if (this.cfg.mode === "blur") {
+        const alpha = (Math.max(0, Math.min(100, this.cfg.opacity)) / 100).toFixed(2);
+        const blur = this.cfg.blur > 0 ? `,gblur=sigma=${this.cfg.blur}` : "";
+        const graph = `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H}${blur},format=rgba,colorchannelmixer=aa=${alpha}[img];[1:v][img]overlay=format=auto,format=rgb24`;
+        const r = await exec("ffmpeg", ["-y", "-loglevel", "error", "-i", this.cfg.source, "-f", "lavfi", "-i", `color=c=0x${bg}:s=${W}x${H}`, "-filter_complex", graph, "-frames:v", "1", "-update", "1", out], { timeout: 120000 });
+        if (r.code !== 0) throw new Error(r.stderr.trim().split("\n").pop() || "ffmpeg failed.");
+      }
+      this.cfg.anim = anim;
       await this.save();
+      await this.setLayoutBackground({ image: `backgrounds/${anim ? `${stem}-00` : stem}.png`, fit: "cover" });
+      await exec("sh", ["-c", 'for f in "$1"/herdrtw-bg-*; do case "$f" in "$2"*) ;; *) rm -f "$f" ;; esac; done; true', "x", BG_DIR(), `${BG_DIR()}/${stem}`]);
       this.msg = "Applied.";
     } catch (error) {
       this.msg = String(error).replace(/^Error: /, "");
@@ -95,8 +105,10 @@ export class Bg {
     if (this.busy) return;
     this.busy = true;
     try {
+      this.cfg.anim = null;
+      await this.save();
       await this.setLayoutBackground("canvas");
-      await exec("sh", ["-c", 'rm -f "$1"/herdrtw-bg-*.png; true', "x", BG_DIR()]);
+      await exec("sh", ["-c", 'rm -f "$1"/herdrtw-bg-*; true', "x", BG_DIR()]);
       this.cfg.source = "";
       await this.save();
       this.msg = "Removed.";
@@ -121,6 +133,46 @@ export class Bg {
       .on_click((_e, cx) => action(cx))
       .child(label);
   }
+  segment(t, title, key, options) {
+    const opt = (label, value) => {
+      const on = this.cfg[key] === value;
+      return div()
+        .id(`${key}-${value}`)
+        .h(26)
+        .px(12)
+        .flex()
+        .items_center()
+        .rounded(6)
+        .border(1)
+        .border_color(on ? t.foreground : t.input)
+        .text_color(on ? t.foreground : t.muted)
+        .hover((s) => s.bg(t.hover))
+        .on_click((_e, cx) => {
+          this.cfg[key] = value;
+          cx.notify();
+        })
+        .child(label);
+    };
+    return h_flex()
+      .items_center()
+      .justify_between()
+      .child(div().text_color(t.foreground).child(title))
+      .child(options.reduce((row, [label, value]) => row.child(opt(label, value)), h_flex().gap(8)));
+  }
+  cycle(t, title, key, list) {
+    const step = (d) => (cx) => {
+      const i = list.indexOf(this.cfg[key]);
+      this.cfg[key] = list[(i + d + list.length) % list.length];
+      cx.notify();
+    };
+    const small = (sid, label, action) =>
+      div().id(`${key}-${sid}`).size(28).flex().items_center().justify_center().rounded(6).border(1).border_color(t.input).text_color(t.muted).hover((s) => s.bg(t.hover)).on_click((_e, cx) => action(cx)).child(label);
+    return h_flex()
+      .items_center()
+      .justify_between()
+      .child(div().text_color(t.foreground).child(title))
+      .child(h_flex().items_center().gap(8).child(small("prev", "‹", step(-1))).child(div().w(80).flex().justify_center().text_color(t.foreground).child(this.cfg[key])).child(small("next", "›", step(1))));
+  }
   stepper(t, id, title, value, suffix, min, max, step, key) {
     const bump = (d) => (cx) => {
       this.cfg[key] = Math.max(min, Math.min(max, this.cfg[key] + d));
@@ -144,7 +196,7 @@ export class Bg {
       .bg(t.popover)
       .text_size(13)
       .child(div().font_semibold().text_color(t.foreground).child("Background image"))
-      .child(div().text_size(11).text_color(t.dim).child("Used by the herdrtw layout. A blurred, dimmed copy is generated, the original is never changed."))
+      .child(div().text_size(11).text_color(t.dim).child("Used by the herdrtw layout. A dimmed copy (blurred, ASCII or grid) is generated, the original is never changed."))
       .child(
         h_flex()
           .items_center()
@@ -153,7 +205,10 @@ export class Bg {
           .child(this.button(t, "pick", "Choose…", (cx) => this.pick(cx))),
       )
       .child(this.stepper(t, "opacity", "Opacity", this.cfg.opacity, "%", 5, 100, 5, "opacity"))
-      .child(this.stepper(t, "blur", "Blur", this.cfg.blur, "px", 0, 40, 2, "blur"))
+      .child(this.segment(t, "Style", "mode", [["Blur", "blur"], ["ASCII", "ascii"], ["Grid", "grid"], ["Dither", "dither"]]))
+      .child(this.cfg.mode === "ascii" || this.cfg.mode === "grid" ? this.segment(t, "Density", "density", [["Sparse", "sparse"], ["Medium", "medium"], ["Dense", "dense"]]) : this.cfg.mode === "dither" ? this.cycle(t, "Palette", "palette", ["original", "midnight", "ember", "moss", "lilac", "mono"]) : div())
+      .child(this.cfg.mode !== "blur" ? this.stepper(t, "scale", "Char size", this.cfg.scale, "x", 1, 4, 1, "scale") : this.stepper(t, "blur", "Blur", this.cfg.blur, "px", 0, 40, 2, "blur"))
+      .child(this.cfg.mode !== "blur" ? this.segment(t, "Motion", "motion", [["Off", false], ["On", true]]) : div())
       .child(div().flex_1())
       .child(div().h(16).text_size(11).text_color(t.dim).child(this.busy && !this.msg ? "working…" : this.msg))
       .child(

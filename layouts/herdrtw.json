@@ -48,7 +48,7 @@
                 }
               },
               "size": {
-                "px": 144
+                "px": 60
               },
               "min": 36
             }
@@ -165,5 +165,6 @@
     12,
     16
   ],
-  "terminal_opacity": 0
+  "terminal_opacity": 0,
+  "toast": "toast-island"
 }

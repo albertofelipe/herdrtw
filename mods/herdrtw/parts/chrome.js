@@ -1,8 +1,16 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { theme, run, window } from "herdr";
+import { BgLoop } from "./bgloop.js";
+
+const LOOP_MS = 125;
 
 export class Chrome {
+  init(_props, cx) {
+    this.loop = new BgLoop();
+    cx.timer.every(LOOP_MS, () => this.loop.tick());
+  }
+
   render() {
     const t = theme();
     const w = window();

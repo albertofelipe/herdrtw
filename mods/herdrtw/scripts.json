@@ -4,10 +4,6 @@
     "command": "yarn install"
   },
   {
-    "name": "npm install",
-    "command": "npm install"
-  },
-  {
     "name": "composer install",
     "command": "composer install"
   }
