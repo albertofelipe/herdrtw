@@ -1,11 +1,21 @@
 {
   "paths": [
     ".env",
-    ".env.local",
+    ".env.e2e",
+    ".env.test",
     "node_modules",
-    "vendor"
+    "vendor",
+    "database/database.sqlite"
   ],
-  "after": [],
+  "after": [
+    {
+      "file": "database/schema/setup-hooks.sh",
+      "command": "bash ./database/schema/setup-hooks.sh"
+    }
+  ],
   "fetch": true,
-  "repos": {}
+  "repos": {
+    "biztrip-api": {},
+    "biztrip-web": {}
+  }
 }

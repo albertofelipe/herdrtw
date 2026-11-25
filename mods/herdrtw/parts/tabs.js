@@ -9,7 +9,7 @@ export class Tabs {
   static COMMANDS = ["worktree", "bg"];
   command(name) {
     if (name === "worktree") openOverlay({ mod: "herdrtw", kind: "dialog", width: 440, height: 630, props: { part: "worktree", action: "new" } });
-    if (name === "bg") openOverlay({ mod: "herdrtw", kind: "dialog", width: 420, height: 340, props: { part: "bg" } });
+    if (name === "bg") openOverlay({ mod: "herdrtw", kind: "dialog", width: 420, height: 450, props: { part: "bg" } });
   }
   init() {
     this.pressed = null;

@@ -40,12 +40,25 @@ export function tone(t, status) {
 
 import { narrow, clearChrome } from "../lib/common.js";
 
+const CI_FAIL = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "STARTUP_FAILURE", "ACTION_REQUIRED"]);
+const CI_WAIT = new Set(["PENDING", "IN_PROGRESS", "QUEUED", "WAITING", "EXPECTED", "REQUESTED"]);
+const CI_RED = "#e5484d";
+
+function ciState(pr) {
+  if (pr.state !== "OPEN" || !Array.isArray(pr.statusCheckRollup) || !pr.statusCheckRollup.length) return { ci: null, failed: [] };
+  const checks = pr.statusCheckRollup.map((c) => ({ name: c.name || c.context || "check", v: String(c.conclusion || c.state || c.status || "").toUpperCase() }));
+  const failed = checks.filter((c) => CI_FAIL.has(c.v)).map((c) => c.name);
+  if (failed.length) return { ci: "bad", failed };
+  if (checks.some((c) => c.v === "" || CI_WAIT.has(c.v))) return { ci: "run", failed: [] };
+  return { ci: "ok", failed: [] };
+}
+
 export class Spaces {
   init(_props, cx) {
     this.git = {}; // where() -> { name, branch, ahead, behind, repo, linked }, null: not a repo
     this.prs = {}; // repo|branch -> { number, state, draft, at } or { none, at }
     this.prBusy = new Set();
-    const prTick = () => { for (const k of Object.keys(this.git)) this.loadPr(k, cx); cx.timer.after(120000, prTick); };
+    const prTick = () => { for (const k of Object.keys(this.git)) this.loadPr(k, cx); cx.timer.after(30000, prTick); };
     cx.timer.after(4000, prTick);
     this.checked = {}; // where() -> when it was last looked at
     this.unsure = new Set(); // where()s git couldn't answer for (a machine away)
@@ -236,14 +249,14 @@ export class Spaces {
     const [on, cwd] = JSON.parse(key);
     if (!g || on || !g.branch || g.branch === "(detached)" || g.branch === "main" || g.branch === "master") return;
     const pk = `${g.repo}|${g.branch}`;
-    if (this.prBusy.has(pk) || Date.now() - (this.prs[pk]?.at ?? 0) < 90000) return;
+    if (this.prBusy.has(pk) || Date.now() - (this.prs[pk]?.at ?? 0) < (this.prs[pk]?.ci === "run" ? 25000 : 90000)) return;
     this.prBusy.add(pk);
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("gh", ["pr", "list", "--head", g.branch, "--state", "all", "--limit", "1", "--json", "number,state,isDraft"], { cwd, timeout: 20000 });
+        const r = await exec("gh", ["pr", "list", "--head", g.branch, "--state", "all", "--limit", "1", "--json", "number,state,isDraft,url,statusCheckRollup"], { cwd, timeout: 20000 });
         if (r.code === 0) {
           const list = JSON.parse(r.stdout || "[]");
-          this.prs[pk] = list[0] ? { number: list[0].number, state: list[0].state, draft: list[0].isDraft, at: Date.now() } : { none: true, at: Date.now() };
+          this.prs[pk] = list[0] ? { number: list[0].number, state: list[0].state, draft: list[0].isDraft, url: list[0].url, ...ciState(list[0]), at: Date.now() } : { none: true, at: Date.now() };
           cx.notify();
         } else this.prs[pk] = { ...(this.prs[pk] ?? { none: true }), at: Date.now() };
       } catch { this.prs[pk] = { ...(this.prs[pk] ?? { none: true }), at: Date.now() }; }
@@ -394,13 +407,22 @@ export class Spaces {
     const label = pr.state === "MERGED" ? "merged" : pr.state === "CLOSED" ? "closed" : pr.draft ? "draft" : "open";
     const dot = div().size(6).rounded(3).flex_none();
     const look = pr.state === "MERGED" ? dot.bg(t.dim) : dot.border(1).border_color(t.dim);
-    return slot.tooltip(this.tip(g)).child(look);
+    const mark = pr.ci === "run"
+      ? svg("mods/workspace-chrome/spinner.svg").size(10).text_color(t.dim).spin(900)
+      : pr.ci === "bad"
+        ? svg("mods/workspace-chrome/x.svg").size(10).text_color(CI_RED)
+        : look;
+    return slot.tooltip(this.tip(g)).cursor_pointer().on_click((_e, cx) => {
+      cx.stop_propagation();
+      if (pr.url) exec("xdg-open", [pr.url], { timeout: 5000 });
+    }).child(mark);
   }
   tip(g) {
     const pr = this.prs[`${g.repo}|${g.branch}`];
     if (!pr?.number) return g.branch;
     const label = pr.state === "MERGED" ? "merged" : pr.state === "CLOSED" ? "closed" : pr.draft ? "draft" : "open";
-    return `${g.branch}\nPR #${pr.number} \u00b7 ${label}`;
+    const ci = pr.ci === "bad" ? ` \u00b7 CI falhou: ${(pr.failed ?? []).slice(0, 4).join(", ")}${(pr.failed ?? []).length > 4 ? ` +${pr.failed.length - 4}` : ""}` : pr.ci === "run" ? " \u00b7 CI rodando" : pr.ci === "ok" ? " \u00b7 CI ok" : "";
+    return `${g.branch}\nPR #${pr.number} \u00b7 ${label}${ci}`;
   }
   gitTail(g, tree, name, t) {
     const raw = g.branch ?? "detached";
@@ -409,7 +431,7 @@ export class Spaces {
     const repo = tree || same(g.name) ? "" : g.name;
     const where = [repo, branch].filter(Boolean).join(" \u00b7 ");
     return h_flex()
-      .flex_1()
+      .flex_shrink(1)
       .min_w(0)
       .gap(5)
       .justify_end()
@@ -478,8 +500,8 @@ export class Spaces {
           .items_center()
           .when(Boolean(tree), el => el.pl(14).child(this.prDot(g, t)).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(14).flex_none().rounded(4).border(1.5).border_color(on ? t.foreground : t.muted).when(on, (s) => s.bg(t.foreground))))
-          .child(div().id(`name-${w.id}`).flex_shrink(0).max_w(150).truncate().text_color(t.foreground).when(Boolean(tree && g?.branch), (el) => el.tooltip(this.tip(g))).child(w.name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .child(div().id(`name-${w.id}`).flex_1().min_w(60).truncate().text_color(t.foreground).when(Boolean(tree && g?.branch), (el) => el.tooltip(this.tip(g))).child(w.name))
+          .child(g ? this.gitTail(g, tree, w.name, t) : div())
           .when(canFold && (isFolded || this.hot === w.id), (el) =>
             el.child(
               h_flex()
